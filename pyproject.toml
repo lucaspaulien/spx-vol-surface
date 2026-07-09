@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "volsurface"
+version = "0.1.0"
+description = "SVI & Heston implied volatility surface calibration on SPX options, with Greeks and out-of-sample benchmarking."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+# Only needed to pull LIVE data (scripts/fetch_live_data.py) or plot
+# (scripts/run_calibration.py --plot). The calibration/pricing core
+# (src/volsurface/*.py) has no dependency beyond numpy+pandas -- see README.
+live = ["yfinance>=0.2.40"]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=7.4", "yfinance>=0.2.40", "matplotlib>=3.7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
