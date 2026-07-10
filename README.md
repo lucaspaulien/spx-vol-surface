@@ -6,6 +6,87 @@ SVI and Heston implied-volatility surface calibration on S&P 500 (SPX) options, 
 
 Pure Python: `numpy` + `pandas` only for the calibration/pricing core (`src/volsurface/`). No `scipy`, no compiled extension, no network access required to reproduce a single result end to end — see [Why no scipy?](#why-no-scipy) below.
 
+## Demo
+
+A concrete look at the pipeline running end-to-end against the real, live SPX data described in [Results #3](#3-live-spx-data-real-market-snapshot-2026-07-09) below. Every number and line shown here is genuine captured or reproduced output from this exact codebase — none of it is a mockup or a fabricated example.
+
+### The smile: SVI vs Heston, 6 of the 45 calibrated maturities
+
+![SPX real live surface: SVI vs Heston](assets/vol_smile_spx_live.png)
+
+Black dots are real SPX market quotes (2026-07-09). SVI (blue) is fit *per maturity* and tracks the market closely at every panel shown — that is what 5 free parameters *per slice* buys you. Heston (red, dashed) uses **one single parameter set across all 45 maturities at once**, and visibly cannot bend to match every smile's individual shape — most clearly in the two middle panels, where the term structure's curvature outpaces what one `(kappa, theta, sigma_v, rho, v0)` tuple can express. This tension — local flexibility with no cross-maturity consistency guarantee (SVI) vs. global consistency with structurally limited local fit (Heston) — is the central tradeoff this repo is built to make visible, not paper over (see [Results #3](#3-live-spx-data-real-market-snapshot-2026-07-09) and [Known limitations](#known-limitations) #2-3 below).
+
+### Step 1 — pull a live option chain
+
+```
+$ python scripts/fetch_live_data.py --ticker ^SPX --max-maturities 47
+Fetching live option chain for ^SPX via yfinance...
+  raw chain: 7498 quotes across 46 maturities, spot=7531.19
+  cleaned surface: 6241 quotes (dropped 483 on liquidity, 774 on IV inversion)
+Saved: data/live_iv_surface_SPX.csv
+Metadata: data/live_iv_surface_SPX.meta.txt
+```
+
+Almost 17% of the raw chain (1257 of 7498 quotes) never makes it to calibration — dropped for a wide bid/ask spread, a near-worthless price, or an implied vol that fails to invert. That filtering happens *before* either model sees a single number; see `data.clean_and_compute_iv`.
+
+### Step 2 — calibrate SVI (per-slice) and Heston (whole surface)
+
+```
+$ python scripts/run_calibration.py --csv data/live_iv_surface_SPX.csv --spot 7531.18994140625 \
+      --n-starts 12 --max-iter 800 --n-points 1200 --plot
+Loaded 6241 quotes from data/live_iv_surface_SPX.csv
+
+Surface: 6241 quotes across 45 maturities (spot=7531.18994140625, r=0.045, q=0.013)
+
+======================================================================
+SVI calibration (per maturity slice)
+======================================================================
+  T= 0.011y  n=109  RMSE= 1.403 vol-pts  arb-free=False  (a=-0.0657 b=0.1979 rho=+0.5879 m=+0.3161 sigma=0.4109)
+  T= 0.014y  n=109  RMSE= 1.393 vol-pts  arb-free=False  (a=-0.8186 b=0.6523 rho=+0.4710 m=+0.7726 sigma=1.4229)
+  ...                                                    (41 more maturities omitted here for length)
+  T= 0.975y  n= 90  RMSE= 0.031 vol-pts  arb-free=True   (a=0.0011 b=0.1255 rho=-0.6400 m=+0.0728 sigma=0.1802)
+  T= 1.019y  n= 95  RMSE= 0.096 vol-pts  arb-free=True   (a=-0.0460 b=0.2021 rho=-0.3906 m=+0.0826 sigma=0.3508)
+  Calendar-arbitrage check: 39/44 adjacent maturity pairs violated
+
+======================================================================
+Heston calibration (whole surface, one parameter set)
+======================================================================
+  kappa=8.0000  theta=0.0279  sigma_v=0.2870  rho=-0.9495  v0=0.0152
+  RMSE=5.991 vol-pts   Feller ratio (2*kappa*theta/sigma_v^2)=5.423 (satisfied)
+
+======================================================================
+Greeks at the ATM strike of the shortest maturity
+======================================================================
+  SVI smile-adjusted (T=0.011): Delta=0.5902  Gamma=0.005818  Vega=314.478  Theta=-140.601
+  Heston finite-difference (T=0.011): Delta=0.5500  Gamma=0.004739  Vega(v0)=1421.790  Theta=-2515.632
+
+Saved plot: vol_smiles.png
+```
+
+The full run prints all 45 SVI slices; the two shortest and two longest maturities are shown here, the other 41 omitted for length. Notice `kappa=8.0000` printed to exactly 4 decimals — that is the parameter pinned at its own upper bound (`_BOUNDS` in `heston.py` caps it at 8.0), not a coincidence; see [Known limitations](#known-limitations) #3 for what that means.
+
+### Step 3 — the out-of-sample benchmark (20 simulated dates)
+
+```
+$ python scripts/run_benchmark.py --n-dates 20 --n-starts 10 --max-iter 400 --n-points 1000
+  date 1/20  SVI= 1.189  Heston= 1.779  FlatBS= 4.723 vol-pts   ( 50.9s elapsed)
+  date 2/20  SVI= 1.566  Heston= 0.740  FlatBS= 6.282 vol-pts   (113.8s elapsed)
+  ...                                                            (17 more dates omitted here for length)
+  date 20/20  SVI= 2.130  Heston= 0.379  FlatBS= 5.760 vol-pts   (659.2s elapsed)
+
+============================================================
+Summary over 20 simulated dates:
+  SVI     mean out-of-sample RMSE: 2.492 vol-pts
+  Heston  mean out-of-sample RMSE: 2.335 vol-pts
+  Flat BS mean out-of-sample RMSE: 7.494 vol-pts
+  Heston improvement vs flat BS: 68.8%
+  SVI improvement vs flat BS:    66.8%
+
+Saved per-date results: benchmark_results.csv
+```
+
+These are the exact numbers behind the [Results #2](#2-out-of-sample-benchmark-20-simulated-trading-dates-full-resolution) table below — nothing rounded or cherry-picked between here and there.
+
 ## What this is
 
 Given a snapshot of SPX (or SPY) call option quotes across several maturities, this project:
