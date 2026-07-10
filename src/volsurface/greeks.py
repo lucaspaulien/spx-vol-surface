@@ -26,13 +26,26 @@ from . import black_scholes as bs
 from . import heston as hst
 
 
-def svi_smile_greeks(svi_slice, S0, r, q, option_type="call", bump_rel=1e-3, bump_t_days=1.0):
+def svi_smile_greeks(svi_slice, S0, r, q, option_type="call", bump_rel=1e-3, bump_t_days=1.0, strikes=None):
     """Delta/Gamma/Vega/Theta at-the-strike-grid of ``svi_slice``, using the
-    calibrated smile to re-price after each bump (sticky-strike)."""
+    calibrated smile to re-price after each bump (sticky-strike).
+
+    ``strikes``: if omitted, defaults to a 25-point grid spanning +/-3 sigma
+    around the fitted slice's own (m, sigma) -- convenient for plotting the
+    whole smile, but note this grid is centered on the *fitted curve's*
+    minimum, not necessarily on-the-money, and its resolution near any
+    specific strike (e.g. spot) varies with the fitted (m, sigma) -- which
+    is not uniquely identified (see svi.py). Callers that need Greeks at a
+    *specific* strike (e.g. true at-the-money, ``forward``) should pass it
+    explicitly rather than picking the nearest point out of the auto-grid.
+    """
     ttm = svi_slice.ttm
     forward = svi_slice.forward
-    strikes = forward * np.exp(np.linspace(svi_slice.m - 3 * svi_slice.sigma,
-                                            svi_slice.m + 3 * svi_slice.sigma, 25))
+    if strikes is None:
+        strikes = forward * np.exp(np.linspace(svi_slice.m - 3 * svi_slice.sigma,
+                                                svi_slice.m + 3 * svi_slice.sigma, 25))
+    else:
+        strikes = np.atleast_1d(np.asarray(strikes, dtype=float))
 
     def price_at(spot, ttm_):
         fwd = spot * np.exp((r - q) * ttm_) if ttm_ > 0 else spot

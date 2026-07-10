@@ -25,7 +25,9 @@ from volsurface import data, greeks, heston, svi  # noqa: E402
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", default=None, help="path to a cleaned iv_df CSV (ttm,strike,forward,implied_vol)")
-    parser.add_argument("--spot", type=float, default=5300.0)
+    parser.add_argument("--spot", type=float, default=None,
+                         help="required with --csv (no sensible default for real data); defaults to 5300.0 "
+                              "for the synthetic demo if omitted")
     parser.add_argument("--rate", type=float, default=0.045)
     parser.add_argument("--div-yield", type=float, default=0.013)
     parser.add_argument("--n-starts", type=int, default=10)
@@ -35,10 +37,26 @@ def main():
     args = parser.parse_args()
 
     if args.csv:
-        iv_df = pd.read_csv(args.csv)
+        if args.spot is None:
+            print(f"Error: --spot is required with --csv (no sensible default for real market data).\n"
+                  f"Check {Path(args.csv).with_suffix('.meta.txt')} for the spot recorded at fetch time, "
+                  f"e.g. --spot <value from that file>.")
+            sys.exit(1)
+        csv_path = Path(args.csv)
+        if not csv_path.is_file():
+            print(f"Error: --csv path does not exist: {args.csv}")
+            sys.exit(1)
+        iv_df = pd.read_csv(csv_path)
+        required_cols = {"ttm", "strike", "forward", "implied_vol"}
+        if not required_cols.issubset(iv_df.columns):
+            print(f"Error: {args.csv} is missing required column(s) {required_cols - set(iv_df.columns)}; "
+                  f"expected a CSV produced by scripts/fetch_live_data.py or data.clean_and_compute_iv.")
+            sys.exit(1)
         spot, r, q = args.spot, args.rate, args.div_yield
         print(f"Loaded {len(iv_df)} quotes from {args.csv}")
     else:
+        if args.spot is None:
+            args.spot = 5300.0
         print("No --csv given: using a synthetic SPX-like surface with a KNOWN Heston ground truth "
               "(see volsurface.data.SPX_LIKE_HESTON_PARAMS).")
         chain = data.generate_synthetic_surface(spot=args.spot, r=args.rate, q=args.div_yield)
@@ -77,11 +95,16 @@ def main():
     print("=" * 70)
     shortest_T = min(slices)
     sl = slices[shortest_T]
-    g = greeks.svi_smile_greeks(sl, spot, r, q)
-    i_atm = int(np.argmin(np.abs(g["strike"] - spot)))
+    # Ask for the Greek at the true at-the-money strike (forward) explicitly,
+    # rather than picking the nearest point out of svi_smile_greeks' default
+    # plotting grid -- that grid is centered on the fitted (m, sigma), which
+    # is not uniquely identified (see svi.py), so its resolution near any
+    # given strike varies run to run and can land a couple percent away from
+    # true ATM at short maturities.
+    g = greeks.svi_smile_greeks(sl, spot, r, q, strikes=np.array([sl.forward]))
     print(f"  SVI smile-adjusted (T={shortest_T:.3f}): "
-          f"Delta={g['delta'][i_atm]:.4f}  Gamma={g['gamma'][i_atm]:.6f}  "
-          f"Vega={g['vega'][i_atm]:.3f}  Theta={g['theta'][i_atm]:.3f}")
+          f"Delta={g['delta'][0]:.4f}  Gamma={g['gamma'][0]:.6f}  "
+          f"Vega={g['vega'][0]:.3f}  Theta={g['theta'][0]:.3f}")
 
     hg = greeks.heston_fd_greeks(hp, spot, np.array([spot]), r, q, shortest_T)
     print(f"  Heston finite-difference (T={shortest_T:.3f}): "

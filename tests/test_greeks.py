@@ -7,6 +7,27 @@ from volsurface import heston
 from volsurface import svi
 
 
+def test_svi_smile_greeks_explicit_strikes_overrides_default_grid():
+    """svi_smile_greeks' default 25-point grid is centered on the fitted
+    slice's own (m, sigma), which is not uniquely identified (see svi.py) --
+    so picking "the nearest grid point to spot" as a stand-in for "the ATM
+    Greek" can land a couple percent away from true at-the-money. Callers
+    that need Greeks at a specific strike (e.g. the true ATM point,
+    ``forward``) must be able to request it directly and get it exactly,
+    not the nearest point of an unrelated auto-generated grid."""
+    S, r, q, T = 100.0, 0.02, 0.0, 0.5
+    forward = S * np.exp((r - q) * T)
+    sl = svi.SVISlice(ttm=T, forward=forward, a=0.02, b=0.2, rho=-0.4, m=0.6, sigma=0.15,
+                       rmse_vol_pts=0.0, n_quotes=10)
+    g_default = greeks.svi_smile_greeks(sl, S, r, q)
+    assert not np.any(np.isclose(g_default["strike"], forward, rtol=1e-9))  # forward isn't in the default grid
+
+    g_explicit = greeks.svi_smile_greeks(sl, S, r, q, strikes=np.array([forward]))
+    assert len(g_explicit["strike"]) == 1
+    assert float(g_explicit["strike"][0]) == pytest.approx(forward)
+    assert np.isfinite(g_explicit["delta"][0])
+
+
 def test_svi_smile_delta_equals_bs_delta_on_a_flat_smile():
     """Degenerate case: if b=0 (flat smile, no skew, no curvature), the SVI
     surface is just a single constant vol, and the sticky-strike smile Delta
