@@ -7,15 +7,13 @@ held-out 20% of strikes per maturity, per simulated date).
     python scripts/run_benchmark.py --n-dates 20 --n-starts 12 --max-iter 600 --n-points 1500  # slower, higher quality
 
 This is the script that produces the headline "SVI RMSE / Heston RMSE /
-Heston improvement vs flat vol" numbers referenced in the README. Runtime
-scales roughly linearly in --n-dates and superlinearly in
---n-starts * --max-iter * --n-points (each is a full Heston re-calibration
-per date) -- the defaults below are tuned to finish in a few minutes on a
-laptop; the sandbox this repo was originally prototyped in had a much
-harsher time budget per command, so the numbers quoted in the README come
-from a reduced-resolution run (see README "Results" section for exact
-settings) -- this script is what you re-run locally for the fully-powered
-version.
+Heston improvement vs flat vol" numbers referenced in the README (Results
+#2, run with --n-dates 20 --n-starts 10 --max-iter 400 --n-points 1000, ~20
+minutes on a laptop). Runtime scales roughly linearly in --n-dates and
+superlinearly in --n-starts * --max-iter * --n-points (each is a full
+Heston re-calibration per date) -- the defaults below are lighter, meant
+for a quick local smoke test rather than reproducing the README table
+exactly.
 """
 from __future__ import annotations
 
