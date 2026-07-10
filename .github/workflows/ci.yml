@@ -21,7 +21,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" pyflakes
+
+      - name: Lint (pyflakes)
+        run: python -m pyflakes src/ scripts/ tests/
 
       - name: Run test suite
         run: pytest -v

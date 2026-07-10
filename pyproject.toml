@@ -9,10 +9,24 @@ description = "SVI & Heston implied volatility surface calibration on SPX option
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "Lucas Paulien" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/lucaspaulien/spx-vol-surface"
 
 [project.optional-dependencies]
 # Only needed to pull LIVE data (scripts/fetch_live_data.py) or plot

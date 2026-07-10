@@ -35,14 +35,31 @@ def main():
     args = parser.parse_args()
 
     print(f"Fetching live option chain for {args.ticker} via yfinance...")
-    chain = data.fetch_live_spx_chain(ticker=args.ticker, max_maturities=args.max_maturities,
-                                       r=args.rate, q=args.div_yield)
+    try:
+        chain = data.fetch_live_spx_chain(ticker=args.ticker, max_maturities=args.max_maturities,
+                                           r=args.rate, q=args.div_yield)
+    except Exception as e:
+        print(f"\nError: could not fetch a live option chain for ticker {args.ticker!r}.")
+        print("This usually means the ticker is invalid/delisted, or Yahoo Finance is temporarily "
+              "rate-limiting/unreachable. Double-check the ticker (e.g. '^SPX' or 'SPY') and retry.")
+        print(f"Underlying error: {type(e).__name__}: {e}")
+        sys.exit(1)
+
+    if len(chain) == 0:
+        print(f"\nError: 0 quotes with a valid bid/ask came back for {args.ticker!r} "
+              f"(--max-maturities {args.max_maturities}). Try a larger --max-maturities, "
+              "a different ticker, or retry later (illiquid strikes often show a stale 0/0 quote).")
+        sys.exit(1)
     print(f"  raw chain: {len(chain)} quotes across {chain['ttm'].nunique()} maturities, spot={chain.attrs['spot']:.2f}")
 
     iv_df = data.clean_and_compute_iv(chain, spot=chain.attrs["spot"], r=args.rate, q=args.div_yield)
     print(f"  cleaned surface: {len(iv_df)} quotes "
           f"(dropped {iv_df.attrs['n_dropped_liquidity']} on liquidity, "
           f"{iv_df.attrs['n_dropped_inversion']} on IV inversion)")
+    if len(iv_df) == 0:
+        print("\nWarning: every quote was filtered out by the liquidity/spread/inversion filters -- "
+              "the saved CSV is empty and unusable for calibration. Try a larger --max-maturities "
+              "or a more liquid ticker.")
 
     out_path = Path(args.out) if args.out else Path(__file__).resolve().parents[1] / "data" / f"live_iv_surface_{args.ticker.strip('^')}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
