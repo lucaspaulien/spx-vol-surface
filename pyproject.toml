@@ -34,7 +34,10 @@ Repository = "https://github.com/lucaspaulien/spx-vol-surface"
 # (src/volsurface/*.py) has no dependency beyond numpy+pandas -- see README.
 live = ["yfinance>=0.2.40"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7.4", "yfinance>=0.2.40", "matplotlib>=3.7"]
+# Only needed to cross-check Greeks against Tradier's broker-reported values
+# (scripts/compare_tradier_greeks.py) -- requires a free Tradier API token.
+compare = ["requests>=2.31"]
+dev = ["pytest>=7.4", "yfinance>=0.2.40", "matplotlib>=3.7", "requests>=2.31"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -70,7 +70,11 @@ def greeks(spot, strike, rate, div_yield, vol, ttm, option_type="call"):
     pdf_d1 = _norm_pdf(d1)
     sqrt_t = np.sqrt(np.maximum(ttm, 1e-8))
 
-    gamma = disc_q * pdf_d1 / (spot * vol * sqrt_t)
+    # vol clamped the same way d1_d2 clamps it internally -- d1 (and hence
+    # pdf_d1) is already computed off the clamped vol, so an unclamped raw
+    # vol=0 here would divide an ~0 numerator by an exact 0 denominator (nan)
+    # instead of the well-defined near-infinite-vol-of-a-degenerate-option gamma.
+    gamma = disc_q * pdf_d1 / (spot * np.maximum(vol, 1e-8) * sqrt_t)
     veg = spot * disc_q * pdf_d1 * sqrt_t
 
     if option_type == "call":

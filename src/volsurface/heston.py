@@ -64,7 +64,7 @@ def _char_func(u, S0, r, q, kappa, theta, sigma_v, rho, v0, T):
 
 
 def heston_call_price(S0, K, r, q, T, kappa, theta, sigma_v, rho, v0,
-                       u_max=150.0, n_points=1000):
+                       u_max=400.0, n_points=2000):
     """European call price(s) under Heston for one maturity T and one or more
     strikes K, sharing a single characteristic-function evaluation on the
     u-grid across all strikes (see module docstring)."""
@@ -74,7 +74,14 @@ def heston_call_price(S0, K, r, q, T, kappa, theta, sigma_v, rho, v0,
     u = np.linspace(1e-6, u_max, n_points)
     phi_2 = _char_func(u, S0, r, q, kappa, theta, sigma_v, rho, v0, T)              # (n_points,)
     phi_num = _char_func(u - 1j, S0, r, q, kappa, theta, sigma_v, rho, v0, T)
-    phi_den = _char_func(np.array([-1j]), S0, r, q, kappa, theta, sigma_v, rho, v0, T)[0]
+    # phi(-1j) = E[exp(ln S_T)] = E[S_T] = S0*exp((r-q)T) for ANY valid Heston
+    # parameters -- a model-independent martingale identity. Evaluating the
+    # closed-form _char_func at u=-1j instead hits a removable singularity
+    # (xi+d degenerates to exactly 0) whenever rho>0 and kappa <= rho*sigma_v,
+    # a reachable corner of _BOUNDS, producing a spurious 0/0 -> nan. Using the
+    # identity sidesteps the singularity entirely rather than patching the
+    # branch choice.
+    phi_den = S0 * np.exp((r - q) * T)
     phi_1 = phi_num / phi_den
 
     # Outer product over (u, strike): shape (n_points, n_strikes).
@@ -86,6 +93,11 @@ def heston_call_price(S0, K, r, q, T, kappa, theta, sigma_v, rho, v0,
     p2 = 0.5 + np.trapezoid(integrand_2, u, axis=0) / np.pi
 
     prices = S0 * np.exp(-q * T) * p1 - K * np.exp(-r * T) * p2
+    # A call price can never be negative; short-maturity, deep-OTM strikes can
+    # leave residual Fourier-truncation noise slightly below zero (the true
+    # price there is a fraction of a cent) -- floor rather than propagate a
+    # visibly-wrong negative price into calibration or Greeks.
+    prices = np.maximum(prices, 0.0)
     return prices if prices.size > 1 else float(prices[0])
 
 

@@ -66,7 +66,16 @@ class SVISlice:
     def is_arbitrage_free_here(self, k_grid=None) -> bool:
         if k_grid is None:
             k_grid = np.linspace(self.m - 3 * self.sigma - 1, self.m + 3 * self.sigma + 1, 400)
-        return bool(np.all(_butterfly_g(self, k_grid) >= -1e-6))
+        # g(k) >= 0 is only meaningful given w(k) >= 0 to begin with (see
+        # _butterfly_g's docstring: "given the slice is otherwise well-
+        # behaved"). w_safe's clamp inside _butterfly_g protects the g(k)
+        # arithmetic from dividing by ~0, but it also erases the sign of a
+        # deeply negative w(k) -- e.g. near k=m with rho=0, g(k) reduces to
+        # ~1 (positive) regardless of how negative w(k) actually is. A
+        # negative total variance is itself a non-negative-density violation
+        # and must fail the check even where g(k) alone looks fine.
+        w = self.total_variance(k_grid)
+        return bool(np.all(w >= -1e-8) and np.all(_butterfly_g(self, k_grid) >= -1e-6))
 
 
 def _min_total_variance(params) -> float:

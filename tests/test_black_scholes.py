@@ -73,6 +73,16 @@ def test_greeks_match_finite_differences():
     assert float(g["vega"]) > 0.0
 
 
+def test_greeks_finite_at_zero_vol():
+    """vol=0 is a degenerate but legal input (e.g. a stale synthetic quote,
+    or a caller sweeping a vol grid from 0). d1_d2 clamps vol internally
+    before computing d1/pdf_d1, but gamma's OWN denominator must apply the
+    same clamp -- otherwise it divides an ~0 numerator by an exact-0
+    denominator (nan) instead of returning a well-defined finite value."""
+    g = bs.greeks(100.0, 100.0, 0.01, 0.0, 0.0, 0.5, "call")
+    assert np.isfinite(float(g["gamma"]))
+
+
 def test_deep_itm_call_delta_near_one_deep_otm_near_zero():
     S, r, q, vol, T = 100.0, 0.02, 0.0, 0.2, 1.0
     g_itm = bs.greeks(S, 20.0, r, q, vol, T, "call")

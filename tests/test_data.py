@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 from volsurface import data
 
@@ -34,3 +35,21 @@ def test_clean_and_compute_iv_drops_illiquid_penny_quotes():
     spot, r, q = chain.attrs["spot"], chain.attrs["rate"], chain.attrs["div_yield"]
     iv_df = data.clean_and_compute_iv(chain, spot=spot, r=r, q=q, min_price=0.05)
     assert iv_df.attrs["n_dropped_liquidity"] >= 0  # deep OTM tails should hit the filter
+
+
+def test_clean_and_compute_iv_rejects_crossed_quotes():
+    """A crossed quote (bid > ask) is a bad/stale tick, not a tight market.
+    Its rel_spread = (ask-bid)/mid is negative, so on its own it always
+    passes the '<= max_rel_spread' liquidity check -- must be rejected by an
+    explicit bid<=ask guard instead."""
+    good = pd.DataFrame([{"ttm": 0.25, "strike": 100.0, "forward": 100.5,
+                           "bid": 5.10, "ask": 5.30, "option_type": "call"}])
+    crossed = pd.DataFrame([{"ttm": 0.25, "strike": 100.0, "forward": 100.5,
+                              "bid": 5.30, "ask": 5.10, "option_type": "call"}])
+
+    good_out = data.clean_and_compute_iv(good, spot=100.0, r=0.03, q=0.0)
+    crossed_out = data.clean_and_compute_iv(crossed, spot=100.0, r=0.03, q=0.0)
+
+    assert len(good_out) == 1
+    assert len(crossed_out) == 0
+    assert crossed_out.attrs["n_dropped_liquidity"] == 1

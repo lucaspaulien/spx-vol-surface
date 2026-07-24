@@ -48,6 +48,18 @@ def test_total_variance_is_nonnegative_on_a_wide_grid():
     assert np.all(sl.total_variance(k_grid) >= -1e-9)
 
 
+def test_is_arbitrage_free_here_rejects_negative_total_variance():
+    """A hand-built slice with a=-1.0 has deeply negative total variance
+    (w(k=0)=-0.99, an impossible negative-density state), but at rho=0 the
+    butterfly proxy g(k) reduces to ~1 (positive) regardless of how negative
+    w(k) is, because w_safe's clamp erases the sign. is_arbitrage_free_here
+    must catch the negative-w violation directly, not rely on g(k) alone."""
+    sl = svi.SVISlice(ttm=0.5, forward=100.0, a=-1.0, b=0.1, rho=0.0, m=0.0, sigma=0.1,
+                       rmse_vol_pts=0.0, n_quotes=10)
+    assert sl.total_variance(0.0) < 0
+    assert sl.is_arbitrage_free_here() is False
+
+
 def test_calendar_arbitrage_flags_a_deliberately_crossed_surface():
     """Build two slices where the LONGER maturity has deliberately LOWER
     total variance everywhere -- a textbook calendar arbitrage -- and check

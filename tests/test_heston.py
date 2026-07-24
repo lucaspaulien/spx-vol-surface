@@ -26,6 +26,32 @@ def test_heston_price_is_monotonic_in_v0():
     assert float(p_high) > float(p_low)
 
 
+def test_heston_price_finite_for_positive_rho_low_kappa():
+    """phi(u=-1j) -- used to normalise P1 -- has a removable singularity in
+    the closed-form 'little trap' formula whenever xi = kappa - rho*sigma_v
+    is <= 0, i.e. rho>0 and kappa <= rho*sigma_v. That corner is reachable
+    inside _BOUNDS (kappa down to 0.2, rho up to 0.95, sigma_v up to 1.5),
+    so a random calibration restart landing there must not blow up to NaN."""
+    S, K, r, q, T = 100.0, [90.0, 100.0, 110.0], 0.03, 0.01, 1.0
+    prices = heston.heston_call_price(S, K, r, q, T, kappa=1.0, theta=0.04,
+                                       sigma_v=1.2, rho=0.9, v0=0.04)
+    assert np.all(np.isfinite(prices))
+    assert np.all(np.asarray(prices) >= 0.0)
+
+
+def test_heston_price_nonnegative_at_short_maturity_deep_otm():
+    """Fourier-truncation error at short maturities/deep OTM strikes can push
+    the raw integral slightly below zero -- a call price must never be
+    negative. Uses this repo's own SPX-like params and shortest default
+    maturity (see data.SPX_LIKE_HESTON_PARAMS, generate_synthetic_surface)."""
+    S, r, q, T = 5300.0, 0.045, 0.013, 7 / 365
+    forward = S * np.exp((r - q) * T)
+    strikes = forward * np.exp(np.linspace(-0.35, 0.35, 21))
+    prices = heston.heston_call_price(S, strikes, r, q, T, kappa=2.5, theta=0.045,
+                                       sigma_v=0.55, rho=-0.75, v0=0.035)
+    assert np.all(prices >= 0.0)
+
+
 def test_negative_rho_produces_negative_skew():
     """Textbook equity-index signature: rho < 0 => implied vol decreasing in
     strike (puts richer than calls in vol terms)."""

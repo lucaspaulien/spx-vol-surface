@@ -61,11 +61,22 @@ def svi_smile_greeks(svi_slice, S0, r, q, option_type="call", bump_rel=1e-3, bum
     delta = (p_up - p_dn) / (2 * h_s)
     gamma = (p_up - 2 * p_mid + p_dn) / (h_s ** 2)
 
+    # Divide by the ACTUAL step taken, not the nominal h_t: near expiry the
+    # max(..., 1e-6) clamp shrinks the real step below bump_t_days/365, and
+    # dividing by the unclamped h_t silently rescales theta by the ratio of
+    # the two (e.g. ~5.5x for a 0DTE option with the default 1-day bump).
     h_t = bump_t_days / 365.0
-    theta = (price_at(S0, max(ttm - h_t, 1e-6)) - p_mid) / h_t  # per year; divide by 365 for per-day
+    ttm_dn = max(ttm - h_t, 1e-6)
+    theta = (price_at(S0, ttm_dn) - p_mid) / (ttm - ttm_dn)  # per year; divide by 365 for per-day
 
     h_vol = 1e-4
-    vol_at_mid = svi_slice.implied_vol(np.log(strikes / forward))
+    # Same moneyness basis price_at used for p_mid (S0-based forward at
+    # ttm), NOT svi_slice.forward -- those two forwards only coincide when
+    # S0*exp((r-q)*ttm) == svi_slice.forward. Reading vol off a different
+    # forward than the one p_mid was priced at mixes in the smile's skew
+    # between the two moneyness bases, swamping a tiny h_vol=1e-4 bump.
+    fwd_mid = S0 * np.exp((r - q) * ttm) if ttm > 0 else S0
+    vol_at_mid = svi_slice.implied_vol(np.log(strikes / fwd_mid))
     p_vol_up = bs.bs_price(S0, strikes, r, q, vol_at_mid + h_vol, ttm, option_type)
     vega = (p_vol_up - p_mid) / h_vol
 
@@ -100,7 +111,8 @@ def heston_fd_greeks(params: hst.HestonParams, S0, K, r, q, T, option_type="call
     vega_v0 = (p_v0_up - p_mid) / (v0_bumped - v0)
 
     h_t = bump_t_days / 365.0
-    theta_g = (price(S0, v0, max(T - h_t, 1e-6)) - p_mid) / h_t
+    T_dn = max(T - h_t, 1e-6)
+    theta_g = (price(S0, v0, T_dn) - p_mid) / (T - T_dn)  # actual step, see svi_smile_greeks for why
 
     return {"strike": K, "price": p_mid, "delta": delta, "gamma": gamma,
             "vega_v0": vega_v0, "theta": theta_g}

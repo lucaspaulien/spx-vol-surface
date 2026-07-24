@@ -86,8 +86,11 @@ def clean_and_compute_iv(chain: pd.DataFrame, spot: float, r: float, q: float,
     df["rel_spread"] = (df["ask"] - df["bid"]) / df["mid"].clip(lower=1e-6)
 
     before = len(df)
-    df = df[(df["mid"] >= min_price) & (df["rel_spread"] <= max_rel_spread) &
-            (df["ttm"] >= min_ttm_days / 365.0)]
+    # A crossed quote (bid > ask) is a bad/stale tick, not a tight market --
+    # rel_spread is negative for one, so it always slips past the "<=
+    # max_rel_spread" check on its own and must be rejected explicitly.
+    df = df[(df["bid"] <= df["ask"]) & (df["mid"] >= min_price) &
+            (df["rel_spread"] <= max_rel_spread) & (df["ttm"] >= min_ttm_days / 365.0)]
     dropped_liquidity = before - len(df)
 
     ivs = []
